@@ -396,7 +396,7 @@ const Experience = ({ sceneState, rotationSpeed }: { sceneState: 'CHAOS' | 'FORM
 
       <color attach="background" args={['#000300']} />
       <Stars radius={100} depth={50} count={5000} factor={4} saturation={0} fade speed={1} />
-      <Environment preset="night" background={false} />
+      <Environment files="/hdri/dikhololo_night_1k.hdr" background={false} />
 
       <ambientLight intensity={0.4} color="#003311" />
       <pointLight position={[30, 30, 30]} intensity={100} color={CONFIG.colors.warmLight} />
