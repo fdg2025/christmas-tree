@@ -72,8 +72,11 @@ const FoliageMaterial = shaderMaterial(
   }`,
   `uniform vec3 uColor; varying float vMix;
   void main() {
-    float r = distance(gl_PointCoord, vec2(0.5)); if (r > 0.5) discard;
-    vec3 finalColor = mix(uColor * 0.3, uColor * 1.2, vMix);
+    float r = distance(gl_PointCoord, vec2(0.5)); 
+    if (r > 0.5) discard;
+    // 添加平滑边缘和增强亮度
+    float smoothEdge = 1.0 - smoothstep(0.3, 0.5, r);
+    vec3 finalColor = mix(uColor * 0.4, uColor * 1.5, vMix) * smoothEdge;
     gl_FragColor = vec4(finalColor, 1.0);
   }`
 );
@@ -204,13 +207,24 @@ const PhotoOrnaments = ({ state }: { state: 'CHAOS' | 'FORMED' }) => {
             <mesh geometry={photoGeometry}>
               <meshStandardMaterial
                 map={textures[obj.textureIndex]}
-                roughness={0.5} metalness={0}
-                emissive={CONFIG.colors.white} emissiveMap={textures[obj.textureIndex]} emissiveIntensity={1.0}
+                roughness={0.3} 
+                metalness={0.1}
+                emissive={CONFIG.colors.white} 
+                emissiveMap={textures[obj.textureIndex]} 
+                emissiveIntensity={1.2}
                 side={THREE.FrontSide}
+                envMapIntensity={1.0}
               />
             </mesh>
             <mesh geometry={borderGeometry} position={[0, -0.15, -0.01]}>
-              <meshStandardMaterial color={obj.borderColor} roughness={0.9} metalness={0} side={THREE.FrontSide} />
+              <meshStandardMaterial 
+                color={obj.borderColor} 
+                roughness={0.7} 
+                metalness={0.05} 
+                side={THREE.FrontSide}
+                emissive={obj.borderColor}
+                emissiveIntensity={0.1}
+              />
             </mesh>
           </group>
           {/* 背面 */}
@@ -218,13 +232,24 @@ const PhotoOrnaments = ({ state }: { state: 'CHAOS' | 'FORMED' }) => {
             <mesh geometry={photoGeometry}>
               <meshStandardMaterial
                 map={textures[obj.textureIndex]}
-                roughness={0.5} metalness={0}
-                emissive={CONFIG.colors.white} emissiveMap={textures[obj.textureIndex]} emissiveIntensity={1.0}
+                roughness={0.3} 
+                metalness={0.1}
+                emissive={CONFIG.colors.white} 
+                emissiveMap={textures[obj.textureIndex]} 
+                emissiveIntensity={1.2}
                 side={THREE.FrontSide}
+                envMapIntensity={1.0}
               />
             </mesh>
             <mesh geometry={borderGeometry} position={[0, -0.15, -0.01]}>
-              <meshStandardMaterial color={obj.borderColor} roughness={0.9} metalness={0} side={THREE.FrontSide} />
+              <meshStandardMaterial 
+                color={obj.borderColor} 
+                roughness={0.7} 
+                metalness={0.05} 
+                side={THREE.FrontSide}
+                emissive={obj.borderColor}
+                emissiveIntensity={0.1}
+              />
             </mesh>
           </group>
         </group>
@@ -282,7 +307,14 @@ const ChristmasElements = ({ state }: { state: 'CHAOS' | 'FORMED' }) => {
       {data.map((obj, i) => {
         let geometry; if (obj.type === 0) geometry = boxGeometry; else if (obj.type === 1) geometry = sphereGeometry; else geometry = caneGeometry;
         return ( <mesh key={i} scale={[obj.scale, obj.scale, obj.scale]} geometry={geometry} rotation={obj.chaosRotation}>
-          <meshStandardMaterial color={obj.color} roughness={0.3} metalness={0.4} emissive={obj.color} emissiveIntensity={0.2} />
+          <meshStandardMaterial 
+            color={obj.color} 
+            roughness={0.2} 
+            metalness={0.5} 
+            emissive={obj.color} 
+            emissiveIntensity={0.3}
+            envMapIntensity={1.2}
+          />
         </mesh> )})}
     </group>
   );
@@ -316,15 +348,26 @@ const FairyLights = ({ state }: { state: 'CHAOS' | 'FORMED' }) => {
       objData.currentPos.lerp(target, delta * 2.0);
       const mesh = child as THREE.Mesh;
       mesh.position.copy(objData.currentPos);
+      // 使用更平滑的闪烁效果
       const intensity = (Math.sin(time * objData.speed + objData.timeOffset) + 1) / 2;
-      if (mesh.material) { (mesh.material as THREE.MeshStandardMaterial).emissiveIntensity = isFormed ? 3 + intensity * 4 : 0; }
+      const smoothIntensity = intensity * intensity; // 二次曲线让闪烁更平滑
+      if (mesh.material) { 
+        (mesh.material as THREE.MeshStandardMaterial).emissiveIntensity = isFormed ? 4 + smoothIntensity * 6 : 0; 
+      }
     });
   });
 
   return (
     <group ref={groupRef}>
       {data.map((obj, i) => ( <mesh key={i} scale={[0.15, 0.15, 0.15]} geometry={geometry}>
-          <meshStandardMaterial color={obj.color} emissive={obj.color} emissiveIntensity={0} toneMapped={false} />
+          <meshStandardMaterial 
+            color={obj.color} 
+            emissive={obj.color} 
+            emissiveIntensity={0} 
+            toneMapped={false}
+            roughness={0.1}
+            metalness={0.8}
+          />
         </mesh> ))}
     </group>
   );
@@ -353,13 +396,14 @@ const TopStar = ({ state }: { state: 'CHAOS' | 'FORMED' }) => {
     });
   }, [starShape]);
 
-  // 纯金材质
+  // 纯金材质 - 优化渲染效果
   const goldMaterial = useMemo(() => new THREE.MeshStandardMaterial({
     color: CONFIG.colors.gold,
     emissive: CONFIG.colors.gold,
-    emissiveIntensity: 1.5, // 适中亮度，既发光又有质感
-    roughness: 0.1,
+    emissiveIntensity: 2.0, // 提高发光强度
+    roughness: 0.05, // 更光滑的表面
     metalness: 1.0,
+    envMapIntensity: 1.5, // 增强环境反射
   }), []);
 
   useFrame((_, delta) => {
@@ -393,17 +437,18 @@ const Experience = ({ sceneState, rotationSpeed }: { sceneState: 'CHAOS' | 'FORM
 
   return (
     <>
-      <PerspectiveCamera makeDefault position={[0, 8, 60]} fov={45} />
+      <PerspectiveCamera makeDefault position={[0, 8, 60]} fov={50} near={0.1} far={200} />
       <OrbitControls ref={controlsRef} enablePan={false} enableZoom={true} minDistance={30} maxDistance={120} autoRotate={rotationSpeed === 0 && sceneState === 'FORMED'} autoRotateSpeed={0.3} maxPolarAngle={Math.PI / 1.7} />
 
       <color attach="background" args={['#000300']} />
-      <Stars radius={100} depth={50} count={5000} factor={4} saturation={0} fade speed={1} />
+      <Stars radius={120} depth={60} count={8000} factor={5} saturation={0.2} fade speed={1.2} />
       <Environment files="/hdri/dikhololo_night_1k.hdr" background={false} />
 
-      <ambientLight intensity={0.4} color="#003311" />
-      <pointLight position={[30, 30, 30]} intensity={100} color={CONFIG.colors.warmLight} />
-      <pointLight position={[-30, 10, -30]} intensity={50} color={CONFIG.colors.gold} />
-      <pointLight position={[0, -20, 10]} intensity={30} color="#ffffff" />
+      <ambientLight intensity={0.5} color="#003311" />
+      <pointLight position={[30, 30, 30]} intensity={120} color={CONFIG.colors.warmLight} distance={100} decay={2} />
+      <pointLight position={[-30, 10, -30]} intensity={70} color={CONFIG.colors.gold} distance={80} decay={2} />
+      <pointLight position={[0, -20, 10]} intensity={40} color="#ffffff" distance={60} decay={2} />
+      <directionalLight position={[10, 20, 10]} intensity={0.8} color="#FFFAF0" castShadow />
 
       <group position={[0, -6, 0]}>
         <Foliage state={sceneState} />
@@ -413,12 +458,19 @@ const Experience = ({ sceneState, rotationSpeed }: { sceneState: 'CHAOS' | 'FORM
            <FairyLights state={sceneState} />
            <TopStar state={sceneState} />
         </Suspense>
-        <Sparkles count={600} scale={50} size={8} speed={0.4} opacity={0.4} color={CONFIG.colors.silver} />
+        <Sparkles count={800} scale={60} size={10} speed={0.5} opacity={0.5} color={CONFIG.colors.silver} />
       </group>
 
       <EffectComposer>
-        <Bloom luminanceThreshold={0.8} luminanceSmoothing={0.1} intensity={1.5} radius={0.5} mipmapBlur />
-        <Vignette eskil={false} offset={0.1} darkness={1.2} />
+        <Bloom 
+          luminanceThreshold={0.7} 
+          luminanceSmoothing={0.9} 
+          intensity={2.0} 
+          radius={0.8} 
+          mipmapBlur
+          levels={9}
+        />
+        <Vignette eskil={false} offset={0.15} darkness={0.8} />
       </EffectComposer>
     </>
   );
@@ -434,14 +486,14 @@ const GestureController = ({ onGesture, onMove, onStatus, debugMode }: any) => {
     let gestureRecognizer: GestureRecognizer;
     let requestRef: number;
     
-    // 平滑处理参数
+    // 平滑处理参数 - 优化为更高灵敏度
     let lastHandX = 0.5; // 上次手部 x 坐标（归一化 0-1）
     let smoothedSpeed = 0; // 平滑后的速度
     let lastUpdateTime = Date.now();
-    const SMOOTHING_FACTOR = 0.7; // 平滑系数 (0-1, 越大越平滑但响应越慢)
-    const SPEED_MULTIPLIER = 0.8; // 速度倍数（增加灵敏度）
-    const DEAD_ZONE = 0.15; // 死区大小（中心区域不响应）
-    const MIN_SPEED = 0.005; // 最小速度阈值（降低阈值提高灵敏度）
+    const SMOOTHING_FACTOR = 0.6; // 平滑系数 (降低以提高响应速度)
+    const SPEED_MULTIPLIER = 1.2; // 速度倍数（进一步提高灵敏度）
+    const DEAD_ZONE = 0.1; // 死区大小（减小死区，提高敏感区域）
+    const MIN_SPEED = 0.003; // 最小速度阈值（进一步降低，提高灵敏度）
 
     const setup = async () => {
       onStatus("LOADING AI...");
@@ -518,9 +570,9 @@ const GestureController = ({ onGesture, onMove, onStatus, debugMode }: any) => {
                   rawSpeed = -curvedX * SPEED_MULTIPLIER; // 取反，因为屏幕坐标和旋转方向
                 }
                 
-                // 计算移动速度（可选，增强响应）
+                // 计算移动速度（增强响应）
                 const handVelocity = (currentHandX - lastHandX) / deltaTime;
-                const velocityComponent = -handVelocity * 0.3; // 移动速度分量
+                const velocityComponent = -handVelocity * 0.5; // 增加移动速度分量权重
                 
                 // 组合位置和速度
                 const targetSpeed = rawSpeed + velocityComponent;
@@ -573,7 +625,18 @@ export default function GrandTreeApp() {
   return (
     <div style={{ width: '100vw', height: '100vh', backgroundColor: '#000', position: 'relative', overflow: 'hidden' }}>
       <div style={{ width: '100%', height: '100%', position: 'absolute', top: 0, left: 0, zIndex: 1 }}>
-        <Canvas dpr={[1, 2]} gl={{ toneMapping: THREE.ReinhardToneMapping }} shadows>
+        <Canvas 
+          dpr={[1, Math.min(window.devicePixelRatio, 2)]} 
+          gl={{ 
+            toneMapping: THREE.ACESFilmicToneMapping,
+            toneMappingExposure: 1.2,
+            antialias: true,
+            alpha: false,
+            powerPreference: "high-performance"
+          }} 
+          shadows
+          performance={{ min: 0.5 }}
+        >
             <Experience sceneState={sceneState} rotationSpeed={rotationSpeed} />
         </Canvas>
       </div>
