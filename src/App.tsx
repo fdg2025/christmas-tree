@@ -382,9 +382,11 @@ const TopStar = ({ state }: { state: 'CHAOS' | 'FORMED' }) => {
 // --- Main Scene Experience ---
 const Experience = ({ sceneState, rotationSpeed }: { sceneState: 'CHAOS' | 'FORMED', rotationSpeed: number }) => {
   const controlsRef = useRef<any>(null);
-  useFrame(() => {
-    if (controlsRef.current) {
-      controlsRef.current.setAzimuthalAngle(controlsRef.current.getAzimuthalAngle() + rotationSpeed);
+  useFrame((state, delta) => {
+    if (controlsRef.current && Math.abs(rotationSpeed) > 0.001) {
+      // 使用 delta 时间让旋转与帧率无关，更平滑
+      const rotationDelta = rotationSpeed * delta * 60; // 标准化到 60fps
+      controlsRef.current.setAzimuthalAngle(controlsRef.current.getAzimuthalAngle() + rotationDelta);
       controlsRef.current.update();
     }
   });
@@ -431,6 +433,15 @@ const GestureController = ({ onGesture, onMove, onStatus, debugMode }: any) => {
   useEffect(() => {
     let gestureRecognizer: GestureRecognizer;
     let requestRef: number;
+    
+    // 平滑处理参数
+    let lastHandX = 0.5; // 上次手部 x 坐标（归一化 0-1）
+    let smoothedSpeed = 0; // 平滑后的速度
+    let lastUpdateTime = Date.now();
+    const SMOOTHING_FACTOR = 0.7; // 平滑系数 (0-1, 越大越平滑但响应越慢)
+    const SPEED_MULTIPLIER = 0.8; // 速度倍数（增加灵敏度）
+    const DEAD_ZONE = 0.15; // 死区大小（中心区域不响应）
+    const MIN_SPEED = 0.005; // 最小速度阈值（降低阈值提高灵敏度）
 
     const setup = async () => {
       onStatus("LOADING AI...");
@@ -468,6 +479,9 @@ const GestureController = ({ onGesture, onMove, onStatus, debugMode }: any) => {
         if (videoRef.current.videoWidth > 0) {
             const results = gestureRecognizer.recognizeForVideo(videoRef.current, Date.now());
             const ctx = canvasRef.current.getContext("2d");
+            const currentTime = Date.now();
+            const deltaTime = Math.max(currentTime - lastUpdateTime, 1) / 1000; // 转换为秒
+            
             if (ctx && debugMode) {
                 ctx.clearRect(0, 0, canvasRef.current.width, canvasRef.current.height);
                 canvasRef.current.width = videoRef.current.videoWidth; canvasRef.current.height = videoRef.current.videoHeight;
@@ -484,11 +498,55 @@ const GestureController = ({ onGesture, onMove, onStatus, debugMode }: any) => {
                  if (name === "Open_Palm") onGesture("CHAOS"); if (name === "Closed_Fist") onGesture("FORMED");
                  if (debugMode) onStatus(`DETECTED: ${name}`);
               }
+              
               if (results.landmarks.length > 0) {
-                const speed = (0.5 - results.landmarks[0][0].x) * 0.15;
-                onMove(Math.abs(speed) > 0.01 ? speed : 0);
+                const currentHandX = results.landmarks[0][0].x; // 手腕 x 坐标（归一化 0-1）
+                
+                // 计算基于位置的原始速度（相对于屏幕中心）
+                const normalizedX = currentHandX - 0.5; // 中心为 0，范围 -0.5 到 0.5
+                
+                // 应用死区：中心区域不响应
+                let rawSpeed = 0;
+                if (Math.abs(normalizedX) > DEAD_ZONE) {
+                  // 移除死区，然后缩放
+                  const effectiveX = normalizedX > 0 
+                    ? (normalizedX - DEAD_ZONE) / (0.5 - DEAD_ZONE)  // 右侧
+                    : (normalizedX + DEAD_ZONE) / (0.5 - DEAD_ZONE); // 左侧
+                  
+                  // 应用非线性曲线（让边缘区域更快）
+                  const curvedX = Math.sign(effectiveX) * Math.pow(Math.abs(effectiveX), 0.7);
+                  rawSpeed = -curvedX * SPEED_MULTIPLIER; // 取反，因为屏幕坐标和旋转方向
+                }
+                
+                // 计算移动速度（可选，增强响应）
+                const handVelocity = (currentHandX - lastHandX) / deltaTime;
+                const velocityComponent = -handVelocity * 0.3; // 移动速度分量
+                
+                // 组合位置和速度
+                const targetSpeed = rawSpeed + velocityComponent;
+                
+                // 指数平滑
+                smoothedSpeed = smoothedSpeed * SMOOTHING_FACTOR + targetSpeed * (1 - SMOOTHING_FACTOR);
+                
+                // 应用最小速度阈值
+                const finalSpeed = Math.abs(smoothedSpeed) > MIN_SPEED ? smoothedSpeed : 0;
+                
+                onMove(finalSpeed);
+                lastHandX = currentHandX;
+                lastUpdateTime = currentTime;
+                
+                if (debugMode) {
+                  onStatus(`SPEED: ${finalSpeed.toFixed(3)} | X: ${currentHandX.toFixed(2)}`);
+                }
               }
-            } else { onMove(0); if (debugMode) onStatus("AI READY: NO HAND"); }
+            } else { 
+              // 没有检测到手势，平滑减速到0
+              smoothedSpeed *= 0.9; // 衰减
+              const finalSpeed = Math.abs(smoothedSpeed) > MIN_SPEED ? smoothedSpeed : 0;
+              onMove(finalSpeed);
+              lastHandX = 0.5; // 重置
+              if (debugMode) onStatus("AI READY: NO HAND"); 
+            }
         }
         requestRef = requestAnimationFrame(predictWebcam);
       }
