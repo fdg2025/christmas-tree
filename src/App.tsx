@@ -426,7 +426,7 @@ const TopStar = ({ state }: { state: 'CHAOS' | 'FORMED' }) => {
 // --- Main Scene Experience ---
 const Experience = ({ sceneState, rotationSpeed }: { sceneState: 'CHAOS' | 'FORMED', rotationSpeed: number }) => {
   const controlsRef = useRef<any>(null);
-  useFrame((state, delta) => {
+  useFrame((_, delta) => {
     if (controlsRef.current && Math.abs(rotationSpeed) > 0.001) {
       // 使用 delta 时间让旋转与帧率无关，更平滑
       const rotationDelta = rotationSpeed * delta * 60; // 标准化到 60fps
