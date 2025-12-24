@@ -14,7 +14,7 @@ import { EffectComposer, Bloom, Vignette } from '@react-three/postprocessing';
 import * as THREE from 'three';
 import { MathUtils } from 'three';
 import * as random from 'maath/random';
-import { GestureRecognizer, FilesetResolver, DrawingUtils } from "@mediapipe/tasks-vision";
+import { HandLandmarker, FilesetResolver, DrawingUtils } from "@mediapipe/tasks-vision";
 
 // --- 动态生成照片列表 (top.jpg + 1.jpg 到 31.jpg) ---
 const TOTAL_NUMBERED_PHOTOS = 31;
@@ -127,7 +127,7 @@ const Foliage = ({ state }: { state: 'CHAOS' | 'FORMED' }) => {
 };
 
 // --- Component: Photo Ornaments (Double-Sided Polaroid) ---
-const PhotoOrnaments = ({ state }: { state: 'CHAOS' | 'FORMED' }) => {
+const PhotoOrnaments = ({ state, focusTarget }: { state: 'CHAOS' | 'FORMED' | 'FOCUS', focusTarget?: number | null }) => {
   const textures = useTexture(CONFIG.photos.body);
   const count = CONFIG.counts.ornaments;
   const groupRef = useRef<THREE.Group>(null);
@@ -171,17 +171,49 @@ const PhotoOrnaments = ({ state }: { state: 'CHAOS' | 'FORMED' }) => {
 
   useFrame((stateObj, delta) => {
     if (!groupRef.current) return;
-    const isFormed = state === 'FORMED';
+    const isFormed = state === 'FORMED' || state === 'FOCUS';
+    const isFocus = state === 'FOCUS';
     const time = stateObj.clock.elapsedTime;
 
     groupRef.current.children.forEach((group, i) => {
       const objData = data[i];
-      const target = isFormed ? objData.targetPos : objData.chaosPos;
+      const isFocused = isFocus && focusTarget !== null && i === focusTarget;
+      
+      let target: THREE.Vector3;
+      let targetScale: number;
+      
+      if (isFocused) {
+        // FOCUS 模式：聚焦的照片移动到相机前方（参考文件：desiredWorldPos = new THREE.Vector3(0, 0, 35)）
+        target = new THREE.Vector3(0, 0, 35);
+        targetScale = objData.scale * 4.5; // 参考文件：s = 4.5
+      } else if (isFocus) {
+        // FOCUS 模式：其他照片散开
+        target = objData.chaosPos;
+        targetScale = objData.scale * 0.8;
+      } else if (isFormed) {
+        // FORMED 模式：正常位置
+        target = objData.targetPos;
+        targetScale = objData.scale;
+      } else {
+        // CHAOS 模式：散开
+        target = objData.chaosPos;
+        targetScale = objData.scale;
+      }
 
-      objData.currentPos.lerp(target, delta * (isFormed ? 0.8 * objData.weight : 0.5));
+      // 位置插值（参考文件：lerpSpeed = 5.0 for focus, 2.0 for others）
+      const lerpSpeed = isFocused ? 5.0 : (isFormed ? 0.8 * objData.weight : 0.5);
+      objData.currentPos.lerp(target, delta * lerpSpeed);
       group.position.copy(objData.currentPos);
 
-      if (isFormed) {
+      // 缩放插值
+      const currentScale = group.scale.x;
+      const newScale = currentScale + (targetScale - currentScale) * 4 * delta;
+      group.scale.setScalar(newScale);
+
+      if (isFocused) {
+        // FOCUS 模式：聚焦的照片朝向相机（参考文件：mesh.lookAt(camera.position)）
+        group.lookAt(stateObj.camera.position);
+      } else if (isFormed) {
          const targetLookPos = new THREE.Vector3(group.position.x * 2, group.position.y + 0.5, group.position.z * 2);
          group.lookAt(targetLookPos);
 
@@ -424,21 +456,57 @@ const TopStar = ({ state }: { state: 'CHAOS' | 'FORMED' }) => {
 };
 
 // --- Main Scene Experience ---
-const Experience = ({ sceneState, rotationSpeed }: { sceneState: 'CHAOS' | 'FORMED', rotationSpeed: number }) => {
+const Experience = ({ 
+  sceneState, 
+  rotationSpeed, 
+  handPosition, 
+  focusTarget 
+}: { 
+  sceneState: 'CHAOS' | 'FORMED' | 'FOCUS', 
+  rotationSpeed: number,
+  handPosition: { x: number, y: number, detected: boolean },
+  focusTarget: number | null
+}) => {
   const controlsRef = useRef<any>(null);
+  const rotationState = useRef({ x: 0, y: 0 });
+  
   useFrame((_, delta) => {
     if (controlsRef.current) {
-      // 参考文件：当没有手势时，TREE 模式下自动旋转
-      if (Math.abs(rotationSpeed) > 0.001) {
-        // 有手势控制时，使用平滑插值（参考文件使用 3.0 * dt）
-        const currentAngle = controlsRef.current.getAzimuthalAngle();
-        const targetAngle = currentAngle + rotationSpeed * delta;
-        const newAngle = currentAngle + (targetAngle - currentAngle) * Math.min(3.0 * delta, 1.0);
-        controlsRef.current.setAzimuthalAngle(newAngle);
+      // 参考文件的手势控制逻辑
+      if (sceneState === 'CHAOS' && handPosition.detected) {
+        // CHAOS/SCATTER 模式下，手部位置直接控制旋转（参考文件）
+        const targetRotY = handPosition.x * Math.PI * 0.9;
+        const targetRotX = handPosition.y * Math.PI * 0.25;
+        
+        // 平滑插值（参考文件使用 3.0 * dt）
+        rotationState.current.y += (targetRotY - rotationState.current.y) * 3.0 * delta;
+        rotationState.current.x += (targetRotX - rotationState.current.x) * 3.0 * delta;
+        
+        // 应用旋转（通过 OrbitControls）
+        controlsRef.current.setAzimuthalAngle(rotationState.current.y);
+        controlsRef.current.setPolarAngle(Math.PI / 2 + rotationState.current.x);
         controlsRef.current.update();
       } else if (sceneState === 'FORMED') {
-        // 没有手势时，TREE 模式下自动旋转（参考文件：STATE.rotation.y += 0.3 * dt）
-        controlsRef.current.setAzimuthalAngle(controlsRef.current.getAzimuthalAngle() + 0.3 * delta);
+        // FORMED/TREE 模式下自动旋转
+        if (handPosition.detected && Math.abs(rotationSpeed) > 0.001) {
+          // 有手势控制时使用速度
+          const currentAngle = controlsRef.current.getAzimuthalAngle();
+          const targetAngle = currentAngle + rotationSpeed * delta;
+          const newAngle = currentAngle + (targetAngle - currentAngle) * Math.min(3.0 * delta, 1.0);
+          controlsRef.current.setAzimuthalAngle(newAngle);
+          controlsRef.current.update();
+        } else {
+          // 自动旋转（参考文件：STATE.rotation.y += 0.3 * dt）
+          controlsRef.current.setAzimuthalAngle(controlsRef.current.getAzimuthalAngle() + 0.3 * delta);
+          controlsRef.current.update();
+        }
+        // 重置 X 旋转
+        rotationState.current.x += (0 - rotationState.current.x) * 2.0 * delta;
+      } else if (sceneState === 'FOCUS') {
+        // FOCUS 模式下，平滑旋转到焦点照片
+        // 这里可以添加相机动画逻辑
+        rotationState.current.y += 0.1 * delta;
+        controlsRef.current.setAzimuthalAngle(rotationState.current.y);
         controlsRef.current.update();
       }
     }
@@ -462,12 +530,12 @@ const Experience = ({ sceneState, rotationSpeed }: { sceneState: 'CHAOS' | 'FORM
       <directionalLight position={[10, 20, 10]} intensity={1.2} color="#FFFAF0" castShadow />
 
       <group position={[0, -6, 0]}>
-        <Foliage state={sceneState} />
+        <Foliage state={sceneState === 'FOCUS' ? 'FORMED' : sceneState} />
         <Suspense fallback={null}>
-           <PhotoOrnaments state={sceneState} />
-           <ChristmasElements state={sceneState} />
-           <FairyLights state={sceneState} />
-           <TopStar state={sceneState} />
+           <PhotoOrnaments state={sceneState === 'FOCUS' ? 'FORMED' : sceneState} focusTarget={focusTarget} />
+           <ChristmasElements state={sceneState === 'FOCUS' ? 'FORMED' : sceneState} />
+           <FairyLights state={sceneState === 'FOCUS' ? 'FORMED' : sceneState} />
+           <TopStar state={sceneState === 'FOCUS' ? 'FORMED' : sceneState} />
         </Suspense>
         <Sparkles count={1200} scale={80} size={12} speed={0.6} opacity={0.7} color={CONFIG.colors.gold} />
       </group>
@@ -489,20 +557,17 @@ const Experience = ({ sceneState, rotationSpeed }: { sceneState: 'CHAOS' | 'FORM
 
 // --- Gesture Controller ---
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-const GestureController = ({ onGesture, onMove, onStatus, debugMode }: any) => {
+const GestureController = ({ onGesture, onMove, onHandPosition, onFocusTarget, onStatus, debugMode }: any) => {
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
   useEffect(() => {
-    let gestureRecognizer: GestureRecognizer;
+    let handLandmarker: HandLandmarker;
     let requestRef: number;
+    let lastVideoTime = -1;
     
-    // 平滑处理参数 - 参考优化，更平滑易控制
-    let smoothedSpeed = 0; // 平滑后的速度
-    let lastUpdateTime = Date.now();
-    const SPEED_MULTIPLIER = 0.4; // 速度倍数（参考文件使用 0.9，这里降低到 0.4 更易控制）
-    const DEAD_ZONE = 0.2; // 死区大小（增大死区，减少误触）
-    const MIN_SPEED = 0.008; // 最小速度阈值（提高阈值，减少微小抖动）
+    // 旋转状态（参考文件中的 STATE.rotation）
+    let rotationState = { x: 0, y: 0 };
     const ROTATION_SMOOTH = 3.0; // 旋转平滑插值系数（参考文件使用 3.0）
 
     const setup = async () => {
@@ -510,10 +575,10 @@ const GestureController = ({ onGesture, onMove, onStatus, debugMode }: any) => {
       try {
         // 使用本地 WASM 文件
         const vision = await FilesetResolver.forVisionTasks("/mediapipe/wasm");
-        gestureRecognizer = await GestureRecognizer.createFromOptions(vision, {
+        handLandmarker = await HandLandmarker.createFromOptions(vision, {
           baseOptions: {
-            // 使用本地模型文件
-            modelAssetPath: "/mediapipe/models/gesture_recognizer.task",
+            // 使用在线模型文件（参考文件的方式）
+            modelAssetPath: "https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task",
             delegate: "GPU"
           },
           runningMode: "VIDEO",
@@ -526,7 +591,7 @@ const GestureController = ({ onGesture, onMove, onStatus, debugMode }: any) => {
             videoRef.current.srcObject = stream;
             videoRef.current.play();
             onStatus("AI READY: SHOW HAND");
-            predictWebcam();
+            videoRef.current.addEventListener("loadeddata", predictWebcam);
           }
         } else {
             onStatus("ERROR: CAMERA PERMISSION DENIED");
@@ -537,79 +602,112 @@ const GestureController = ({ onGesture, onMove, onStatus, debugMode }: any) => {
     };
 
     const predictWebcam = () => {
-      if (gestureRecognizer && videoRef.current && canvasRef.current) {
-        if (videoRef.current.videoWidth > 0) {
-            const results = gestureRecognizer.recognizeForVideo(videoRef.current, Date.now());
+      if (handLandmarker && videoRef.current && canvasRef.current) {
+        if (videoRef.current.videoWidth > 0 && videoRef.current.currentTime !== lastVideoTime) {
+            lastVideoTime = videoRef.current.currentTime;
+            const results = handLandmarker.detectForVideo(videoRef.current, performance.now());
             const ctx = canvasRef.current.getContext("2d");
-            const currentTime = Date.now();
-            const deltaTime = Math.max(currentTime - lastUpdateTime, 1) / 1000; // 转换为秒
             
             if (ctx && debugMode) {
                 ctx.clearRect(0, 0, canvasRef.current.width, canvasRef.current.height);
-                canvasRef.current.width = videoRef.current.videoWidth; canvasRef.current.height = videoRef.current.videoHeight;
-                if (results.landmarks) for (const landmarks of results.landmarks) {
-                        const drawingUtils = new DrawingUtils(ctx);
-                        drawingUtils.drawConnectors(landmarks, GestureRecognizer.HAND_CONNECTIONS, { color: "#FFD700", lineWidth: 2 });
-                        drawingUtils.drawLandmarks(landmarks, { color: "#FF0000", lineWidth: 1 });
+                canvasRef.current.width = videoRef.current.videoWidth; 
+                canvasRef.current.height = videoRef.current.videoHeight;
+                if (results.landmarks) {
+                  for (const landmarks of results.landmarks) {
+                    const drawingUtils = new DrawingUtils(ctx);
+                    drawingUtils.drawConnectors(landmarks, HandLandmarker.HAND_CONNECTIONS, { color: "#FFD700", lineWidth: 2 });
+                    drawingUtils.drawLandmarks(landmarks, { color: "#FF0000", lineWidth: 1 });
+                  }
                 }
-            } else if (ctx && !debugMode) ctx.clearRect(0, 0, canvasRef.current.width, canvasRef.current.height);
-
-            if (results.gestures.length > 0) {
-              const name = results.gestures[0][0].categoryName; const score = results.gestures[0][0].score;
-              if (score > 0.4) {
-                 if (name === "Open_Palm") onGesture("CHAOS"); if (name === "Closed_Fist") onGesture("FORMED");
-                 if (debugMode) onStatus(`DETECTED: ${name}`);
-              }
-              
-              if (results.landmarks.length > 0) {
-                const currentHandX = results.landmarks[0][0].x; // 手腕 x 坐标（归一化 0-1）
-                
-                // 参考文件的计算方式：直接基于位置计算目标旋转
-                // 将手部位置转换为旋转角度（参考文件使用 Math.PI * 0.9）
-                const normalizedX = (currentHandX - 0.5) * 2; // 转换为 -1 到 1
-                
-                // 应用死区：中心区域不响应
-                let targetSpeed = 0;
-                if (Math.abs(normalizedX) > DEAD_ZONE) {
-                  // 移除死区，然后缩放
-                  const effectiveX = normalizedX > 0 
-                    ? (normalizedX - DEAD_ZONE) / (1 - DEAD_ZONE)  // 右侧
-                    : (normalizedX + DEAD_ZONE) / (1 - DEAD_ZONE); // 左侧
-                  
-                  // 参考文件使用 Math.PI * 0.9，这里转换为速度
-                  // 使用更平滑的曲线
-                  const curvedX = Math.sign(effectiveX) * Math.pow(Math.abs(effectiveX), 0.8);
-                  targetSpeed = -curvedX * SPEED_MULTIPLIER * Math.PI * 0.9; // 参考文件的角度范围
-                }
-                
-                // 使用平滑插值（参考文件使用 3.0 * dt 的方式）
-                // 这里转换为速度插值
-                smoothedSpeed += (targetSpeed - smoothedSpeed) * ROTATION_SMOOTH * deltaTime;
-                
-                // 应用最小速度阈值
-                const finalSpeed = Math.abs(smoothedSpeed) > MIN_SPEED ? smoothedSpeed : 0;
-                
-                onMove(finalSpeed);
-                lastUpdateTime = currentTime;
-                
-                if (debugMode) {
-                  onStatus(`SPEED: ${finalSpeed.toFixed(3)} | X: ${currentHandX.toFixed(2)}`);
-                }
-              }
-            } else { 
-              // 没有检测到手势，平滑减速到0（参考文件更平滑的衰减）
-              smoothedSpeed += (0 - smoothedSpeed) * ROTATION_SMOOTH * 0.016; // 使用固定帧时间
-              const finalSpeed = Math.abs(smoothedSpeed) > MIN_SPEED ? smoothedSpeed : 0;
-              onMove(finalSpeed);
-              if (debugMode) onStatus("AI READY: NO HAND"); 
+            } else if (ctx && !debugMode) {
+              ctx.clearRect(0, 0, canvasRef.current.width, canvasRef.current.height);
             }
+
+            processGestures(results);
         }
         requestRef = requestAnimationFrame(predictWebcam);
       }
     };
+
+    const processGestures = (result: any) => {
+      if (result.landmarks && result.landmarks.length > 0) {
+        const lm = result.landmarks[0];
+        
+        // 更新手部位置（参考文件：使用中指关节 lm[9]）
+        const handX = (lm[9].x - 0.5) * 2; // 转换为 -1 到 1
+        const handY = (lm[9].y - 0.5) * 2;
+        onHandPosition({ x: handX, y: handY, detected: true });
+
+        // 检测手势（参考文件的逻辑）
+        const thumb = lm[4]; // 拇指指尖
+        const index = lm[8]; // 食指指尖
+        const wrist = lm[0]; // 手腕
+        
+        // 计算捏合距离
+        const pinchDist = Math.hypot(thumb.x - index.x, thumb.y - index.y);
+        
+        // 计算手指到手腕的平均距离（判断握拳/张开）
+        const tips = [lm[8], lm[12], lm[16], lm[20]]; // 四个手指的指尖
+        let avgDist = 0;
+        tips.forEach(t => avgDist += Math.hypot(t.x - wrist.x, t.y - wrist.y));
+        avgDist /= 4;
+
+        // 手势识别（参考文件的逻辑）
+        if (pinchDist < 0.05) {
+          // 捏合 -> FOCUS 模式
+          if (onGesture) {
+            onGesture("FOCUS");
+            // 随机选择一个照片作为焦点（参考文件：从照片列表中随机选择）
+            onFocusTarget(Math.floor(Math.random() * CONFIG.counts.ornaments));
+          }
+        } else if (avgDist < 0.25) {
+          // 握拳 -> FORMED 模式
+          if (onGesture) onGesture("FORMED");
+          if (onFocusTarget) onFocusTarget(null);
+        } else if (avgDist > 0.4) {
+          // 张开手掌 -> CHAOS 模式
+          if (onGesture) onGesture("CHAOS");
+          if (onFocusTarget) onFocusTarget(null);
+        }
+
+        // 在 SCATTER/CHAOS 模式下，手部位置控制旋转（参考文件）
+        // 这里我们传递手部位置，让 Experience 组件处理旋转
+        const targetRotY = handX * Math.PI * 0.9;
+        const targetRotX = handY * Math.PI * 0.25;
+        
+        // 平滑插值（参考文件使用 3.0 * dt）
+        const dt = 0.016; // 假设 60fps
+        rotationState.y += (targetRotY - rotationState.y) * ROTATION_SMOOTH * dt;
+        rotationState.x += (targetRotX - rotationState.x) * ROTATION_SMOOTH * dt;
+        
+        // 转换为旋转速度（用于自动旋转）
+        onMove(rotationState.y);
+        
+        if (debugMode) {
+          onStatus(`HAND: X=${handX.toFixed(2)} Y=${handY.toFixed(2)} | PINCH=${pinchDist.toFixed(3)} | AVG=${avgDist.toFixed(3)}`);
+        }
+      } else {
+        // 没有检测到手部
+        onHandPosition({ x: 0, y: 0, detected: false });
+        
+        // 平滑重置旋转
+        const dt = 0.016;
+        rotationState.y += (0 - rotationState.y) * ROTATION_SMOOTH * dt;
+        rotationState.x += (0 - rotationState.x) * ROTATION_SMOOTH * dt;
+        onMove(rotationState.y);
+        
+        if (debugMode) onStatus("AI READY: NO HAND");
+      }
+    };
+
     setup();
-    return () => cancelAnimationFrame(requestRef);
-  }, [onGesture, onMove, onStatus, debugMode]);
+    return () => {
+      if (requestRef) cancelAnimationFrame(requestRef);
+      if (videoRef.current) {
+        videoRef.current.removeEventListener("loadeddata", predictWebcam);
+      }
+    };
+  }, [onGesture, onMove, onHandPosition, onFocusTarget, onStatus, debugMode]);
 
   return (
     <>
@@ -621,8 +719,10 @@ const GestureController = ({ onGesture, onMove, onStatus, debugMode }: any) => {
 
 // --- App Entry ---
 export default function GrandTreeApp() {
-  const [sceneState, setSceneState] = useState<'CHAOS' | 'FORMED'>('CHAOS');
+  const [sceneState, setSceneState] = useState<'CHAOS' | 'FORMED' | 'FOCUS'>('CHAOS');
   const [rotationSpeed, setRotationSpeed] = useState(0);
+  const [handPosition, setHandPosition] = useState({ x: 0, y: 0, detected: false });
+  const [focusTarget, setFocusTarget] = useState<number | null>(null);
   const [aiStatus, setAiStatus] = useState("INITIALIZING...");
   const [debugMode, setDebugMode] = useState(false);
 
@@ -641,10 +741,17 @@ export default function GrandTreeApp() {
           shadows
           performance={{ min: 0.5 }}
         >
-            <Experience sceneState={sceneState} rotationSpeed={rotationSpeed} />
+            <Experience sceneState={sceneState} rotationSpeed={rotationSpeed} handPosition={handPosition} focusTarget={focusTarget} />
         </Canvas>
       </div>
-      <GestureController onGesture={setSceneState} onMove={setRotationSpeed} onStatus={setAiStatus} debugMode={debugMode} />
+      <GestureController 
+        onGesture={setSceneState} 
+        onMove={setRotationSpeed} 
+        onHandPosition={setHandPosition}
+        onFocusTarget={setFocusTarget}
+        onStatus={setAiStatus} 
+        debugMode={debugMode} 
+      />
 
       {/* UI - Stats */}
       <div style={{ position: 'absolute', bottom: '30px', left: '40px', color: '#888', zIndex: 10, fontFamily: "'Times New Roman', serif", userSelect: 'none' }}>
