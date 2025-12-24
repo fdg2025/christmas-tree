@@ -498,10 +498,8 @@ const GestureController = ({ onGesture, onMove, onStatus, debugMode }: any) => {
     let requestRef: number;
     
     // 平滑处理参数 - 参考优化，更平滑易控制
-    let lastHandX = 0.5; // 上次手部 x 坐标（归一化 0-1）
     let smoothedSpeed = 0; // 平滑后的速度
     let lastUpdateTime = Date.now();
-    const SMOOTHING_FACTOR = 0.85; // 平滑系数 (提高以降低灵敏度，更平滑)
     const SPEED_MULTIPLIER = 0.4; // 速度倍数（参考文件使用 0.9，这里降低到 0.4 更易控制）
     const DEAD_ZONE = 0.2; // 死区大小（增大死区，减少误触）
     const MIN_SPEED = 0.008; // 最小速度阈值（提高阈值，减少微小抖动）
@@ -592,7 +590,6 @@ const GestureController = ({ onGesture, onMove, onStatus, debugMode }: any) => {
                 const finalSpeed = Math.abs(smoothedSpeed) > MIN_SPEED ? smoothedSpeed : 0;
                 
                 onMove(finalSpeed);
-                lastHandX = currentHandX;
                 lastUpdateTime = currentTime;
                 
                 if (debugMode) {
@@ -604,7 +601,6 @@ const GestureController = ({ onGesture, onMove, onStatus, debugMode }: any) => {
               smoothedSpeed += (0 - smoothedSpeed) * ROTATION_SMOOTH * 0.016; // 使用固定帧时间
               const finalSpeed = Math.abs(smoothedSpeed) > MIN_SPEED ? smoothedSpeed : 0;
               onMove(finalSpeed);
-              lastHandX = 0.5; // 重置
               if (debugMode) onStatus("AI READY: NO HAND"); 
             }
         }
