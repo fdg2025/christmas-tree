@@ -207,13 +207,13 @@ const PhotoOrnaments = ({ state }: { state: 'CHAOS' | 'FORMED' }) => {
             <mesh geometry={photoGeometry}>
               <meshStandardMaterial
                 map={textures[obj.textureIndex]}
-                roughness={0.3} 
-                metalness={0.1}
+                roughness={0.2} 
+                metalness={0.2}
                 emissive={CONFIG.colors.white} 
                 emissiveMap={textures[obj.textureIndex]} 
-                emissiveIntensity={1.2}
+                emissiveIntensity={1.5}
                 side={THREE.FrontSide}
-                envMapIntensity={1.0}
+                envMapIntensity={1.5}
               />
             </mesh>
             <mesh geometry={borderGeometry} position={[0, -0.15, -0.01]}>
@@ -232,13 +232,13 @@ const PhotoOrnaments = ({ state }: { state: 'CHAOS' | 'FORMED' }) => {
             <mesh geometry={photoGeometry}>
               <meshStandardMaterial
                 map={textures[obj.textureIndex]}
-                roughness={0.3} 
-                metalness={0.1}
+                roughness={0.2} 
+                metalness={0.2}
                 emissive={CONFIG.colors.white} 
                 emissiveMap={textures[obj.textureIndex]} 
-                emissiveIntensity={1.2}
+                emissiveIntensity={1.5}
                 side={THREE.FrontSide}
-                envMapIntensity={1.0}
+                envMapIntensity={1.5}
               />
             </mesh>
             <mesh geometry={borderGeometry} position={[0, -0.15, -0.01]}>
@@ -309,11 +309,11 @@ const ChristmasElements = ({ state }: { state: 'CHAOS' | 'FORMED' }) => {
         return ( <mesh key={i} scale={[obj.scale, obj.scale, obj.scale]} geometry={geometry} rotation={obj.chaosRotation}>
           <meshStandardMaterial 
             color={obj.color} 
-            roughness={0.2} 
-            metalness={0.5} 
+            roughness={0.15} 
+            metalness={0.6} 
             emissive={obj.color} 
-            emissiveIntensity={0.3}
-            envMapIntensity={1.2}
+            emissiveIntensity={0.5}
+            envMapIntensity={1.5}
           />
         </mesh> )})}
     </group>
@@ -352,7 +352,7 @@ const FairyLights = ({ state }: { state: 'CHAOS' | 'FORMED' }) => {
       const intensity = (Math.sin(time * objData.speed + objData.timeOffset) + 1) / 2;
       const smoothIntensity = intensity * intensity; // 二次曲线让闪烁更平滑
       if (mesh.material) { 
-        (mesh.material as THREE.MeshStandardMaterial).emissiveIntensity = isFormed ? 4 + smoothIntensity * 6 : 0; 
+        (mesh.material as THREE.MeshStandardMaterial).emissiveIntensity = isFormed ? 5 + smoothIntensity * 8 : 0; 
       }
     });
   });
@@ -400,10 +400,10 @@ const TopStar = ({ state }: { state: 'CHAOS' | 'FORMED' }) => {
   const goldMaterial = useMemo(() => new THREE.MeshStandardMaterial({
     color: CONFIG.colors.gold,
     emissive: CONFIG.colors.gold,
-    emissiveIntensity: 2.0, // 提高发光强度
+    emissiveIntensity: 2.5, // 提高发光强度
     roughness: 0.05, // 更光滑的表面
     metalness: 1.0,
-    envMapIntensity: 1.5, // 增强环境反射
+    envMapIntensity: 2.0, // 增强环境反射
   }), []);
 
   useFrame((_, delta) => {
@@ -427,11 +427,20 @@ const TopStar = ({ state }: { state: 'CHAOS' | 'FORMED' }) => {
 const Experience = ({ sceneState, rotationSpeed }: { sceneState: 'CHAOS' | 'FORMED', rotationSpeed: number }) => {
   const controlsRef = useRef<any>(null);
   useFrame((_, delta) => {
-    if (controlsRef.current && Math.abs(rotationSpeed) > 0.001) {
-      // 使用 delta 时间让旋转与帧率无关，更平滑
-      const rotationDelta = rotationSpeed * delta * 60; // 标准化到 60fps
-      controlsRef.current.setAzimuthalAngle(controlsRef.current.getAzimuthalAngle() + rotationDelta);
-      controlsRef.current.update();
+    if (controlsRef.current) {
+      // 参考文件：当没有手势时，TREE 模式下自动旋转
+      if (Math.abs(rotationSpeed) > 0.001) {
+        // 有手势控制时，使用平滑插值（参考文件使用 3.0 * dt）
+        const currentAngle = controlsRef.current.getAzimuthalAngle();
+        const targetAngle = currentAngle + rotationSpeed * delta;
+        const newAngle = currentAngle + (targetAngle - currentAngle) * Math.min(3.0 * delta, 1.0);
+        controlsRef.current.setAzimuthalAngle(newAngle);
+        controlsRef.current.update();
+      } else if (sceneState === 'FORMED') {
+        // 没有手势时，TREE 模式下自动旋转（参考文件：STATE.rotation.y += 0.3 * dt）
+        controlsRef.current.setAzimuthalAngle(controlsRef.current.getAzimuthalAngle() + 0.3 * delta);
+        controlsRef.current.update();
+      }
     }
   });
 
@@ -440,15 +449,17 @@ const Experience = ({ sceneState, rotationSpeed }: { sceneState: 'CHAOS' | 'FORM
       <PerspectiveCamera makeDefault position={[0, 8, 60]} fov={50} near={0.1} far={200} />
       <OrbitControls ref={controlsRef} enablePan={false} enableZoom={true} minDistance={30} maxDistance={120} autoRotate={rotationSpeed === 0 && sceneState === 'FORMED'} autoRotateSpeed={0.3} maxPolarAngle={Math.PI / 1.7} />
 
-      <color attach="background" args={['#000300']} />
-      <Stars radius={120} depth={60} count={8000} factor={5} saturation={0.2} fade speed={1.2} />
+      <color attach="background" args={['#000000']} />
+      <fog attach="fog" args={['#000000', 0.01]} />
+      <Stars radius={120} depth={60} count={10000} factor={6} saturation={0.3} fade speed={1.5} />
       <Environment files="/hdri/dikhololo_night_1k.hdr" background={false} />
 
-      <ambientLight intensity={0.5} color="#003311" />
-      <pointLight position={[30, 30, 30]} intensity={120} color={CONFIG.colors.warmLight} distance={100} decay={2} />
-      <pointLight position={[-30, 10, -30]} intensity={70} color={CONFIG.colors.gold} distance={80} decay={2} />
-      <pointLight position={[0, -20, 10]} intensity={40} color="#ffffff" distance={60} decay={2} />
-      <directionalLight position={[10, 20, 10]} intensity={0.8} color="#FFFAF0" castShadow />
+      <ambientLight intensity={0.6} color="#ffffff" />
+      <pointLight position={[0, 5, 0]} intensity={200} color={CONFIG.colors.warmLight} distance={20} decay={2} />
+      <pointLight position={[30, 40, 40]} intensity={1200} color="#ffcc66" distance={100} decay={2} />
+      <pointLight position={[-30, 20, -30]} intensity={600} color="#6688ff" distance={80} decay={2} />
+      <pointLight position={[0, 0, 50]} intensity={80} color="#ffeebb" distance={100} decay={2} />
+      <directionalLight position={[10, 20, 10]} intensity={1.2} color="#FFFAF0" castShadow />
 
       <group position={[0, -6, 0]}>
         <Foliage state={sceneState} />
@@ -458,19 +469,19 @@ const Experience = ({ sceneState, rotationSpeed }: { sceneState: 'CHAOS' | 'FORM
            <FairyLights state={sceneState} />
            <TopStar state={sceneState} />
         </Suspense>
-        <Sparkles count={800} scale={60} size={10} speed={0.5} opacity={0.5} color={CONFIG.colors.silver} />
+        <Sparkles count={1200} scale={80} size={12} speed={0.6} opacity={0.7} color={CONFIG.colors.gold} />
       </group>
 
       <EffectComposer>
         <Bloom 
-          luminanceThreshold={0.7} 
-          luminanceSmoothing={0.9} 
-          intensity={2.0} 
-          radius={0.8} 
+          luminanceThreshold={0.6} 
+          luminanceSmoothing={0.95} 
+          intensity={2.5} 
+          radius={1.0} 
           mipmapBlur
           levels={9}
         />
-        <Vignette eskil={false} offset={0.15} darkness={0.8} />
+        <Vignette eskil={false} offset={0.12} darkness={0.9} />
       </EffectComposer>
     </>
   );
@@ -486,14 +497,15 @@ const GestureController = ({ onGesture, onMove, onStatus, debugMode }: any) => {
     let gestureRecognizer: GestureRecognizer;
     let requestRef: number;
     
-    // 平滑处理参数 - 优化为更高灵敏度
+    // 平滑处理参数 - 参考优化，更平滑易控制
     let lastHandX = 0.5; // 上次手部 x 坐标（归一化 0-1）
     let smoothedSpeed = 0; // 平滑后的速度
     let lastUpdateTime = Date.now();
-    const SMOOTHING_FACTOR = 0.6; // 平滑系数 (降低以提高响应速度)
-    const SPEED_MULTIPLIER = 1.2; // 速度倍数（进一步提高灵敏度）
-    const DEAD_ZONE = 0.1; // 死区大小（减小死区，提高敏感区域）
-    const MIN_SPEED = 0.003; // 最小速度阈值（进一步降低，提高灵敏度）
+    const SMOOTHING_FACTOR = 0.85; // 平滑系数 (提高以降低灵敏度，更平滑)
+    const SPEED_MULTIPLIER = 0.4; // 速度倍数（参考文件使用 0.9，这里降低到 0.4 更易控制）
+    const DEAD_ZONE = 0.2; // 死区大小（增大死区，减少误触）
+    const MIN_SPEED = 0.008; // 最小速度阈值（提高阈值，减少微小抖动）
+    const ROTATION_SMOOTH = 3.0; // 旋转平滑插值系数（参考文件使用 3.0）
 
     const setup = async () => {
       onStatus("LOADING AI...");
@@ -554,31 +566,27 @@ const GestureController = ({ onGesture, onMove, onStatus, debugMode }: any) => {
               if (results.landmarks.length > 0) {
                 const currentHandX = results.landmarks[0][0].x; // 手腕 x 坐标（归一化 0-1）
                 
-                // 计算基于位置的原始速度（相对于屏幕中心）
-                const normalizedX = currentHandX - 0.5; // 中心为 0，范围 -0.5 到 0.5
+                // 参考文件的计算方式：直接基于位置计算目标旋转
+                // 将手部位置转换为旋转角度（参考文件使用 Math.PI * 0.9）
+                const normalizedX = (currentHandX - 0.5) * 2; // 转换为 -1 到 1
                 
                 // 应用死区：中心区域不响应
-                let rawSpeed = 0;
+                let targetSpeed = 0;
                 if (Math.abs(normalizedX) > DEAD_ZONE) {
                   // 移除死区，然后缩放
                   const effectiveX = normalizedX > 0 
-                    ? (normalizedX - DEAD_ZONE) / (0.5 - DEAD_ZONE)  // 右侧
-                    : (normalizedX + DEAD_ZONE) / (0.5 - DEAD_ZONE); // 左侧
+                    ? (normalizedX - DEAD_ZONE) / (1 - DEAD_ZONE)  // 右侧
+                    : (normalizedX + DEAD_ZONE) / (1 - DEAD_ZONE); // 左侧
                   
-                  // 应用非线性曲线（让边缘区域更快）
-                  const curvedX = Math.sign(effectiveX) * Math.pow(Math.abs(effectiveX), 0.7);
-                  rawSpeed = -curvedX * SPEED_MULTIPLIER; // 取反，因为屏幕坐标和旋转方向
+                  // 参考文件使用 Math.PI * 0.9，这里转换为速度
+                  // 使用更平滑的曲线
+                  const curvedX = Math.sign(effectiveX) * Math.pow(Math.abs(effectiveX), 0.8);
+                  targetSpeed = -curvedX * SPEED_MULTIPLIER * Math.PI * 0.9; // 参考文件的角度范围
                 }
                 
-                // 计算移动速度（增强响应）
-                const handVelocity = (currentHandX - lastHandX) / deltaTime;
-                const velocityComponent = -handVelocity * 0.5; // 增加移动速度分量权重
-                
-                // 组合位置和速度
-                const targetSpeed = rawSpeed + velocityComponent;
-                
-                // 指数平滑
-                smoothedSpeed = smoothedSpeed * SMOOTHING_FACTOR + targetSpeed * (1 - SMOOTHING_FACTOR);
+                // 使用平滑插值（参考文件使用 3.0 * dt 的方式）
+                // 这里转换为速度插值
+                smoothedSpeed += (targetSpeed - smoothedSpeed) * ROTATION_SMOOTH * deltaTime;
                 
                 // 应用最小速度阈值
                 const finalSpeed = Math.abs(smoothedSpeed) > MIN_SPEED ? smoothedSpeed : 0;
@@ -592,8 +600,8 @@ const GestureController = ({ onGesture, onMove, onStatus, debugMode }: any) => {
                 }
               }
             } else { 
-              // 没有检测到手势，平滑减速到0
-              smoothedSpeed *= 0.9; // 衰减
+              // 没有检测到手势，平滑减速到0（参考文件更平滑的衰减）
+              smoothedSpeed += (0 - smoothedSpeed) * ROTATION_SMOOTH * 0.016; // 使用固定帧时间
               const finalSpeed = Math.abs(smoothedSpeed) > MIN_SPEED ? smoothedSpeed : 0;
               onMove(finalSpeed);
               lastHandX = 0.5; // 重置
@@ -628,8 +636,8 @@ export default function GrandTreeApp() {
         <Canvas 
           dpr={[1, Math.min(window.devicePixelRatio, 2)]} 
           gl={{ 
-            toneMapping: THREE.ACESFilmicToneMapping,
-            toneMappingExposure: 1.2,
+            toneMapping: THREE.ReinhardToneMapping,
+            toneMappingExposure: 2.2,
             antialias: true,
             alpha: false,
             powerPreference: "high-performance"
@@ -643,33 +651,107 @@ export default function GrandTreeApp() {
       <GestureController onGesture={setSceneState} onMove={setRotationSpeed} onStatus={setAiStatus} debugMode={debugMode} />
 
       {/* UI - Stats */}
-      <div style={{ position: 'absolute', bottom: '30px', left: '40px', color: '#888', zIndex: 10, fontFamily: 'sans-serif', userSelect: 'none' }}>
-        <div style={{ marginBottom: '15px' }}>
-          <p style={{ fontSize: '10px', letterSpacing: '2px', textTransform: 'uppercase', marginBottom: '4px' }}>Memories</p>
-          <p style={{ fontSize: '24px', color: '#FFD700', fontWeight: 'bold', margin: 0 }}>
-            {CONFIG.counts.ornaments.toLocaleString()} <span style={{ fontSize: '10px', color: '#555', fontWeight: 'normal' }}>POLAROIDS</span>
+      <div style={{ position: 'absolute', bottom: '30px', left: '40px', color: '#888', zIndex: 10, fontFamily: "'Times New Roman', serif", userSelect: 'none' }}>
+        <div style={{ marginBottom: '15px', background: 'rgba(20, 20, 20, 0.6)', padding: '15px 20px', borderRadius: '4px', backdropFilter: 'blur(5px)', border: '1px solid rgba(212, 175, 55, 0.3)' }}>
+          <p style={{ fontSize: '9px', letterSpacing: '3px', textTransform: 'uppercase', marginBottom: '6px', color: 'rgba(212, 175, 55, 0.7)' }}>Memories</p>
+          <p style={{ fontSize: '28px', color: '#d4af37', fontWeight: '400', margin: 0, textShadow: '0 0 20px rgba(212, 175, 55, 0.5)' }}>
+            {CONFIG.counts.ornaments.toLocaleString()} <span style={{ fontSize: '10px', color: 'rgba(212, 175, 55, 0.5)', fontWeight: 'normal', letterSpacing: '2px' }}>POLAROIDS</span>
           </p>
         </div>
-        <div>
-          <p style={{ fontSize: '10px', letterSpacing: '2px', textTransform: 'uppercase', marginBottom: '4px' }}>Foliage</p>
-          <p style={{ fontSize: '24px', color: '#004225', fontWeight: 'bold', margin: 0 }}>
-            {(CONFIG.counts.foliage / 1000).toFixed(0)}K <span style={{ fontSize: '10px', color: '#555', fontWeight: 'normal' }}>EMERALD NEEDLES</span>
+        <div style={{ background: 'rgba(20, 20, 20, 0.6)', padding: '15px 20px', borderRadius: '4px', backdropFilter: 'blur(5px)', border: '1px solid rgba(212, 175, 55, 0.3)' }}>
+          <p style={{ fontSize: '9px', letterSpacing: '3px', textTransform: 'uppercase', marginBottom: '6px', color: 'rgba(212, 175, 55, 0.7)' }}>Foliage</p>
+          <p style={{ fontSize: '28px', color: '#004225', fontWeight: '400', margin: 0, textShadow: '0 0 15px rgba(0, 66, 37, 0.6)' }}>
+            {(CONFIG.counts.foliage / 1000).toFixed(0)}K <span style={{ fontSize: '10px', color: 'rgba(212, 175, 55, 0.5)', fontWeight: 'normal', letterSpacing: '2px' }}>EMERALD NEEDLES</span>
           </p>
         </div>
       </div>
 
       {/* UI - Buttons */}
-      <div style={{ position: 'absolute', bottom: '30px', right: '40px', zIndex: 10, display: 'flex', gap: '10px' }}>
-        <button onClick={() => setDebugMode(!debugMode)} style={{ padding: '12px 15px', backgroundColor: debugMode ? '#FFD700' : 'rgba(0,0,0,0.5)', border: '1px solid #FFD700', color: debugMode ? '#000' : '#FFD700', fontFamily: 'sans-serif', fontSize: '12px', fontWeight: 'bold', cursor: 'pointer', backdropFilter: 'blur(4px)' }}>
+      <div style={{ position: 'absolute', bottom: '30px', right: '40px', zIndex: 10, display: 'flex', gap: '12px', flexDirection: 'column' }}>
+        <button 
+          onClick={() => setDebugMode(!debugMode)} 
+          style={{ 
+            padding: '10px 20px', 
+            backgroundColor: debugMode ? '#d4af37' : 'rgba(20, 20, 20, 0.6)', 
+            border: '1px solid rgba(212, 175, 55, 0.4)', 
+            color: debugMode ? '#000' : '#d4af37', 
+            fontFamily: "'Times New Roman', serif", 
+            fontSize: '10px', 
+            fontWeight: '400', 
+            letterSpacing: '3px',
+            textTransform: 'uppercase',
+            cursor: 'pointer', 
+            backdropFilter: 'blur(5px)',
+            transition: 'all 0.4s',
+            boxShadow: debugMode ? '0 0 20px rgba(212, 175, 55, 0.5)' : 'none'
+          }}
+          onMouseEnter={(e) => {
+            if (!debugMode) {
+              e.currentTarget.style.background = '#d4af37';
+              e.currentTarget.style.color = '#000';
+              e.currentTarget.style.boxShadow = '0 0 20px rgba(212, 175, 55, 0.5)';
+            }
+          }}
+          onMouseLeave={(e) => {
+            if (!debugMode) {
+              e.currentTarget.style.background = 'rgba(20, 20, 20, 0.6)';
+              e.currentTarget.style.color = '#d4af37';
+              e.currentTarget.style.boxShadow = 'none';
+            }
+          }}
+        >
            {debugMode ? 'HIDE DEBUG' : '🛠 DEBUG'}
         </button>
-        <button onClick={() => setSceneState(s => s === 'CHAOS' ? 'FORMED' : 'CHAOS')} style={{ padding: '12px 30px', backgroundColor: 'rgba(0,0,0,0.5)', border: '1px solid rgba(255, 215, 0, 0.5)', color: '#FFD700', fontFamily: 'serif', fontSize: '14px', fontWeight: 'bold', letterSpacing: '3px', textTransform: 'uppercase', cursor: 'pointer', backdropFilter: 'blur(4px)' }}>
+        <button 
+          onClick={() => setSceneState(s => s === 'CHAOS' ? 'FORMED' : 'CHAOS')} 
+          style={{ 
+            padding: '12px 30px', 
+            backgroundColor: 'rgba(20, 20, 20, 0.6)', 
+            border: '1px solid rgba(212, 175, 55, 0.4)', 
+            color: '#d4af37', 
+            fontFamily: "'Times New Roman', serif", 
+            fontSize: '12px', 
+            fontWeight: '400', 
+            letterSpacing: '4px', 
+            textTransform: 'uppercase', 
+            cursor: 'pointer', 
+            backdropFilter: 'blur(5px)',
+            transition: 'all 0.4s'
+          }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.background = '#d4af37';
+            e.currentTarget.style.color = '#000';
+            e.currentTarget.style.boxShadow = '0 0 20px rgba(212, 175, 55, 0.5)';
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.background = 'rgba(20, 20, 20, 0.6)';
+            e.currentTarget.style.color = '#d4af37';
+            e.currentTarget.style.boxShadow = 'none';
+          }}
+        >
            {sceneState === 'CHAOS' ? 'Assemble Tree' : 'Disperse'}
         </button>
       </div>
 
       {/* UI - AI Status */}
-      <div style={{ position: 'absolute', top: '20px', left: '50%', transform: 'translateX(-50%)', color: aiStatus.includes('ERROR') ? '#FF0000' : 'rgba(255, 215, 0, 0.4)', fontSize: '10px', letterSpacing: '2px', zIndex: 10, background: 'rgba(0,0,0,0.5)', padding: '4px 8px', borderRadius: '4px' }}>
+      <div style={{ 
+        position: 'absolute', 
+        top: '20px', 
+        left: '50%', 
+        transform: 'translateX(-50%)', 
+        color: aiStatus.includes('ERROR') ? '#ff0000' : 'rgba(212, 175, 55, 0.6)', 
+        fontSize: '9px', 
+        letterSpacing: '3px', 
+        textTransform: 'uppercase',
+        zIndex: 10, 
+        background: 'rgba(20, 20, 20, 0.6)', 
+        padding: '6px 12px', 
+        borderRadius: '2px',
+        backdropFilter: 'blur(5px)',
+        border: '1px solid rgba(212, 175, 55, 0.2)',
+        fontFamily: "'Times New Roman', serif",
+        fontWeight: '100'
+      }}>
         {aiStatus}
       </div>
     </div>
