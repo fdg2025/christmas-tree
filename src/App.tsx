@@ -433,12 +433,14 @@ const GestureController = ({ onGesture, onMove, onStatus, debugMode }: any) => {
     let requestRef: number;
 
     const setup = async () => {
-      onStatus("DOWNLOADING AI...");
+      onStatus("LOADING AI...");
       try {
-        const vision = await FilesetResolver.forVisionTasks("https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.3/wasm");
+        // 使用本地 WASM 文件
+        const vision = await FilesetResolver.forVisionTasks("/mediapipe/wasm");
         gestureRecognizer = await GestureRecognizer.createFromOptions(vision, {
           baseOptions: {
-            modelAssetPath: "https://storage.googleapis.com/mediapipe-models/gesture_recognizer/gesture_recognizer/float16/1/gesture_recognizer.task",
+            // 使用本地模型文件
+            modelAssetPath: "/mediapipe/models/gesture_recognizer.task",
             delegate: "GPU"
           },
           runningMode: "VIDEO",
