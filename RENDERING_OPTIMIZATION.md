@@ -241,3 +241,11 @@ emissiveIntensity = 4 + smoothIntensity * 6;
 
 所有优化在提升视觉效果的同时，保持了良好的性能表现。
 
+
+
+
+
+
+
+
+
